@@ -86,9 +86,8 @@ async function initFirebase(){
     import(FB+'firebase-app.js'), import(FB+'firebase-auth.js'), import(FB+'firebase-firestore.js'),
   ]);
   const app = initializeApp(firebaseConfig);
-  let db;
-  try { db = fs.initializeFirestore(app, {localCache: fs.persistentLocalCache({tabManager: fs.persistentMultipleTabManager()})}); }
-  catch { db = fs.getFirestore(app); }
+  // In-memory cache only: iPhone browsers (especially in-app ones) often refuse Firestore's offline storage.
+  const db = fs.getFirestore(app);
   const a = auth.getAuth(app);
   await auth.signInAnonymously(a);
   S.fb = {db, fs};
@@ -100,7 +99,7 @@ function subscribe(){
   S.unsubs.forEach(u => u()); S.unsubs = [];
   S.ready = {people:false,goals:false,checks:false};
   const {onSnapshot} = S.fb.fs;
-  const err = e => { console.error(e); S.failed = 'sync'; render(); };
+  const err = e => { console.error(e); S.failed = 'sync'; S.failCode = e?.code || e?.message || 'unknown'; render(); };
   S.unsubs.push(onSnapshot(col('people'), {includeMetadataChanges:true}, s => {
     if (s.empty && s.metadata.fromCache) return; // wait for the server before deciding the crew is empty
     S.people = s.docs.map(d => ({id:d.id, ...d.data()})).sort((a,b) => (a.order??0)-(b.order??0) || a.id.localeCompare(b.id));
@@ -174,7 +173,7 @@ function renderFailure(){
     config: `<h2>Almost there</h2><p class="empty">This copy of Streak Squad isn't connected to a database yet. Add your Firebase settings to <code>firebase-config.js</code> (the README walks through it), then reload.</p>`,
     auth: `<h2>Sign-in is turned off</h2><p class="empty">Turn on <strong>Anonymous</strong> sign-in in the Firebase console (Authentication → Sign-in method), then reload.</p>`,
     offline: `<h2>Can't connect</h2><p class="empty">Check your internet connection, then reload.</p><div class="actions"><button class="btn" data-action="reload">Reload</button></div>`,
-    sync: `<h2>Can't load your crew</h2><p class="empty">The database refused the request. If you just set things up, check that the Firestore rules from <code>firestore.rules</code> are published. Otherwise reload and try again.</p><div class="actions"><button class="btn" data-action="reload">Reload</button></div>`,
+    sync: `<h2>Can't load your crew</h2><p class="empty">The database refused the request. If you just set things up, check that the Firestore rules from <code>firestore.rules</code> are published. Otherwise reload and try again.</p><p class="empty" style="padding:0">Error: <code>${esc(S.failCode)}</code></p><div class="actions"><button class="btn" data-action="reload">Reload</button><button class="btn ghost" data-action="leave">Use a different crew code</button></div>`,
   }[S.failed] || '';
   $('#main').innerHTML = `<section class="panel" style="--p:${COLORS[0]}">${msg}</section>`;
 }
@@ -421,6 +420,7 @@ document.addEventListener('click', e => {
   else if (a === 'join') join();
   else if (a === 'create') enterCrew(newCode(), {creating:true});
   else if (a === 'create-here'){ S.creating = true; render(); }
+  else if (a === 'leave' && S.failed){ S.failed = null; leaveCrew(); }
   else if (a === 'leave'){
     if (b.id === 'leave-btn' && b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = 'Tap again to leave this crew on this phone'; return; }
     leaveCrew();
