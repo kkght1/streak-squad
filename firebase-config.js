@@ -1,14 +1,10 @@
-// Paste your Firebase web app config here (Firebase console → Project settings → Your apps → SDK setup and configuration → Config).
+// Firebase web app config for this crew's project (Firebase console → Project settings → Your apps).
 // These values are not secrets: Firebase identifies the project with them, and firestore.rules decides who can read and write.
-// Leave it as null and the app shows setup instructions instead.
-export const firebaseConfig = null;
-
-// Example of what it looks like once filled in:
-// export const firebaseConfig = {
-//   apiKey: "AIza...",
-//   authDomain: "your-project.firebaseapp.com",
-//   projectId: "your-project",
-//   storageBucket: "your-project.appspot.com",
-//   messagingSenderId: "1234567890",
-//   appId: "1:1234567890:web:abc123",
-// };
+export const firebaseConfig = {
+  apiKey: "AIzaSyDekasQ6FwyrT4jU7mGtqxvrGPF16DzVRY",
+  authDomain: "streak-squad-d5455.firebaseapp.com",
+  projectId: "streak-squad-d5455",
+  storageBucket: "streak-squad-d5455.firebasestorage.app",
+  messagingSenderId: "783005950758",
+  appId: "1:783005950758:web:593e26c104fb4e6f9857e7",
+};
