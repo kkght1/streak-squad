@@ -1,5 +1,5 @@
 rules_version = '2';
-service cloud_firestore {
+service cloud.firestore {
   match /databases/{database}/documents {
     // Each crew lives under crews/<10-character code>. Anyone signed in to the app
     // (anonymous sign-in, done automatically) who knows the code can read and write that crew.
