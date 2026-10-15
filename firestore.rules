@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud_firestore {
+  match /databases/{database}/documents {
+    // Each crew lives under crews/<10-character code>. Anyone signed in to the app
+    // (anonymous sign-in, done automatically) who knows the code can read and write that crew.
+    // There is no rule for listing the crews collection, so codes can't be browsed.
+    match /crews/{crew}/{document=**} {
+      allow read, write: if request.auth != null && crew.matches('^[A-Z0-9]{10}$');
+    }
+  }
+}
