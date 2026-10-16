@@ -6,6 +6,7 @@ Daily goal check-ins and streaks for a small crew of friends. It runs in any pho
 - Three goal types: **every day**, **at least N times a week** (e.g. work out 3×), and **at most N times a week** (e.g. alcohol 2×).
 - Streaks count days in a row for daily goals, and weeks in a row hitting the target or staying under the limit for weekly goals.
 - You can tap earlier days in the week strip to catch up on check-ins you missed.
+- **Squad streak:** set a prize and a number of days. A day counts when everyone finishes their daily goals; going over an "at most" limit or ending a week short of an "at least" target resets it to zero. Won prizes go in a trophy case.
 - Check-ins sync live between phones through a free Firebase database.
 
 ## One-time setup (about 10 minutes)

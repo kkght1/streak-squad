@@ -1,6 +1,6 @@
 // Network first, falling back to the cached copy so the app still opens offline.
 // Firebase traffic is left alone; Firestore keeps its own offline cache.
-const CACHE = 'streak-squad-v2';
+const CACHE = 'streak-squad-v3';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'firebase-config.js', 'manifest.webmanifest', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => {

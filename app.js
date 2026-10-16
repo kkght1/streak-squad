@@ -41,7 +41,7 @@ const inviteLink = c => location.origin + location.pathname + '#' + c;
 
 // ---- state
 const S = {
-  fb:null, crew:null, unsubs:[], failed:null, ready:{people:false,goals:false,checks:false},
+  fb:null, crew:null, unsubs:[], failed:null, ready:{people:false,goals:false,checks:false,squad:false}, squad:null,
   people:[], goals:[], checks:new Map(),
   sel:store.get('sel'), date:today(), me:store.get('me'),
   sheet:null, form:{mode:'daily',target:3}, armed:null, setupColors:[0,1,2], creating:false,
@@ -80,6 +80,133 @@ function summary(pid){
   return {gs, daily, dailyDone, best, over};
 }
 
+
+// ---- squad streak: a day counts when every person checked off every daily goal,
+// nobody went over an "at most" limit that day, and (on Sundays) nobody finished
+// the week short of an "at least" target. A miss resets the streak to zero.
+function dayIssues(d){
+  const issues = []; let anyGoal = false;
+  const ws = weekStart(d), sunday = addDays(ws, 6);
+  for (const p of S.people){
+    for (const g of goalsOf(p.id)){
+      if ((g.createdAt || '') > d) continue;
+      anyGoal = true;
+      if (g.mode === 'daily' && !isDone(p.id, g.id, d)) issues.push({p, g, kind:'daily'});
+      if (g.mode === 'atmost' && isDone(p.id, g.id, d)){
+        let c = 0; for (let x = ws; x <= d; x = addDays(x, 1)) if (isDone(p.id, g.id, x)) c++;
+        if (c > g.target) issues.push({p, g, kind:'over'});
+      }
+      if (g.mode === 'atleast' && d === sunday && weekStart(g.createdAt || d) < ws && weekCount(g, ws) < g.target)
+        issues.push({p, g, kind:'short'});
+    }
+  }
+  return {ok: anyGoal && !issues.length, issues};
+}
+
+function squadState(){
+  const sq = S.squad; if (!sq?.startedAt) return null;
+  const t = today(), start = sq.startedAt, target = sq.target || 30;
+  const todayInfo = dayIssues(t);
+  let d = todayInfo.ok ? t : addDays(t, -1), n = 0;
+  while (n < 2000 && d >= start && dayIssues(d).ok){ n++; d = addDays(d, -1); }
+  const runStart = addDays(d, 1);
+  const broke = d >= start && d < t ? {day:d, issues:dayIssues(d).issues} : null;
+  return {sq, t, start, target, n, todayInfo, broke, won: n >= target, reachedOn: addDays(runStart, target - 1)};
+}
+
+const issueText = i => i.kind === 'daily' ? `${i.p.name} missed ${i.g.title}`
+  : i.kind === 'over' ? `${i.p.name} went over the ${i.g.title} limit` : `${i.p.name} came up short on ${i.g.title}`;
+const listNames = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+
+function renderSquad(){
+  const el = $('#squad'), st = squadState();
+  const grad = `linear-gradient(90deg, ${S.people.map(p => p.color).join(', ')}${S.people.length < 2 ? ', ' + (S.people[0]?.color || COLORS[0]) : ''})`;
+  el.style.setProperty('--grad', grad);
+  if (!st){
+    el.innerHTML = `<section class="squad"><div class="sq-top"><span class="lbl">Squad streak</span></div>
+      <p class="sq-status">Pick a prize and how many days in a row all of you need to finish your daily goals to win it.</p>
+      <div class="actions"><button class="btn sq-btn" data-action="open-squad">Set a squad prize</button></div></section>`;
+    return;
+  }
+  const {sq, t, target, n, todayInfo, broke, won} = st;
+  let status;
+  if (won) status = `You did it! ${target} days in a row. Time to collect.`;
+  else if (st.start > t) status = `New round starts tomorrow. Make day 1 count.`;
+  else if (todayInfo.ok) status = `Today counts. Everyone's done.`;
+  else {
+    const over = todayInfo.issues.filter(i => i.kind === 'over');
+    const left = [...new Set(todayInfo.issues.filter(i => i.kind === 'daily').map(i => i.p.name))];
+    status = over.length ? `${esc(issueText(over[0]))}, so today won't count.`
+      : left.length ? `Waiting on ${esc(listNames(left))} to finish today's goals.`
+      : `Add daily goals to start counting.`;
+  }
+  const lastReset = !won && broke && n < 3 && broke.issues.length
+    ? `<p class="sq-reset">Reset ${broke.day === addDays(t,-1) ? 'yesterday' : 'on ' + fmt(broke.day,{weekday:'long'})}: ${esc(issueText(broke.issues[0]))}${broke.issues.length > 1 ? ` (+${broke.issues.length-1} more)` : ''}.</p>` : '';
+  el.innerHTML = `<section class="squad ${won ? 'won' : ''}">
+    <div class="sq-top"><span class="lbl">Squad streak</span><button class="chip" data-action="open-squad">${(sq.wins||[]).length ? `🏆 ${(sq.wins||[]).length} · ` : ''}Prize</button></div>
+    <div class="sq-main">${ICON.flame(!n)}<b>${Math.min(n, target)}</b><span>of ${target} days</span></div>
+    <div class="sq-prize">Prize: <strong>${esc(sq.prize || 'Not set')}</strong></div>
+    <div class="sq-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${Math.min(n,target)}"><i style="width:${Math.min(100, n / target * 100)}%"></i></div>
+    <p class="sq-status">${status}</p>${lastReset}
+    ${won ? `<div class="actions"><button class="btn sq-btn" data-action="claim">Claim prize and start next round</button></div>` : ''}
+  </section>`;
+  if (won){
+    const key = 'won-' + S.crew + '-' + st.start;
+    if (!store.get(key)){ store.set(key, '1'); confetti(); }
+  }
+}
+
+function confetti(){
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const c = document.createElement('canvas'); c.className = 'confetti'; document.body.appendChild(c);
+  const ctx = c.getContext('2d'), dpr = devicePixelRatio || 1;
+  const W = c.width = innerWidth * dpr, H = c.height = innerHeight * dpr;
+  const cols = S.people.map(p => p.color).concat(['#FFC56E']);
+  const bits = Array.from({length: 140}, () => ({x: Math.random()*W, y: -Math.random()*H*0.5, vx: (Math.random()-.5)*3*dpr, vy: (2+Math.random()*4)*dpr, r: Math.random()*6.3, vr: (Math.random()-.5)*.3, s: (5+Math.random()*6)*dpr, c: cols[Math.floor(Math.random()*cols.length)]}));
+  const t0 = performance.now();
+  (function frame(now){
+    ctx.clearRect(0, 0, W, H);
+    for (const b of bits){ b.x += b.vx; b.y += b.vy; b.vy += .05*dpr; b.r += b.vr;
+      ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.fillStyle = b.c; ctx.fillRect(-b.s/2, -b.s/4, b.s, b.s/2); ctx.restore(); }
+    if (now - t0 < 3500) requestAnimationFrame(frame); else c.remove();
+  })(t0);
+}
+
+async function claimPrize(btn){
+  const st = squadState(); if (!st?.won) return;
+  btn.disabled = true;
+  try {
+    await S.fb.fs.setDoc(ref('meta','squad'), {
+      startedAt: addDays(st.reachedOn, 1),
+      wins: S.fb.fs.arrayUnion({prize: st.sq.prize || '', target: st.target, wonAt: st.reachedOn}),
+    }, {merge: true});
+    toast(`Prize won: ${st.sq.prize}. New round starts tomorrow.`);
+  } catch(e){ fail(e); btn.disabled = false; }
+}
+
+async function saveSquad(btn){
+  const prize = $('#prize-text').value.trim();
+  if (!prize){ toast('Name the prize first.'); $('#prize-text').focus(); return; }
+  btn.disabled = true;
+  try {
+    await S.fb.fs.setDoc(ref('meta','squad'), {prize, target: S.prizeTarget, startedAt: S.squad?.startedAt || today()}, {merge: true});
+    toast('Squad prize saved.'); closeSheet();
+  } catch(e){ fail(e); }
+  finally { btn.disabled = false; }
+}
+
+function renderTrophies(){
+  const el = $('#trophies'); if (!el) return;
+  const wins = [...(S.squad?.wins || [])].sort((a,b) => (b.wonAt||'').localeCompare(a.wonAt||''));
+  el.innerHTML = wins.length ? `<span class="lbl">Trophy case</span><ul class="mlist">${wins.map(w => `<li><div><strong>🏆 ${esc(w.prize)}</strong><small>${w.target} days in a row · won ${fmt(w.wonAt,{month:'short',day:'numeric',year:'numeric'})}</small></div></li>`).join('')}</ul>`
+    : `<p class="empty" style="padding:0">Prizes you win will show up here.</p>`;
+}
+
+function syncPrizeTarget(){
+  $('#prize-target').textContent = S.prizeTarget;
+  document.querySelectorAll('[data-action=prize-days]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.n === S.prizeTarget));
+}
+
 // ---- Firebase
 async function initFirebase(){
   const [{initializeApp}, auth, fs] = await Promise.all([
@@ -97,7 +224,7 @@ const ref = (name, id) => S.fb.fs.doc(S.fb.db, 'crews', S.crew, name, id);
 
 function subscribe(){
   S.unsubs.forEach(u => u()); S.unsubs = [];
-  S.ready = {people:false,goals:false,checks:false};
+  S.ready = {people:false,goals:false,checks:false,squad:false};
   const {onSnapshot} = S.fb.fs;
   const err = e => { console.error(e); S.failed = 'sync'; S.failCode = e?.code || e?.message || 'unknown'; render(); };
   S.unsubs.push(onSnapshot(col('people'), {includeMetadataChanges:true}, s => {
@@ -113,6 +240,10 @@ function subscribe(){
     S.checks = new Map(s.docs.map(d => [d.id, d.data()]));
     S.ready.checks = true; render();
   }, err));
+  S.unsubs.push(onSnapshot(ref('meta','squad'), s => {
+    S.squad = s.exists() ? s.data() : null;
+    S.ready.squad = true; render();
+  }, err));
 }
 
 function enterCrew(code, {creating=false}={}){
@@ -124,7 +255,7 @@ function enterCrew(code, {creating=false}={}){
 
 function leaveCrew(){
   S.unsubs.forEach(u => u()); S.unsubs = [];
-  S.crew = null; S.people = []; S.goals = []; S.checks = new Map(); S.me = null; S.sel = null;
+  S.crew = null; S.people = []; S.goals = []; S.checks = new Map(); S.squad = null; S.me = null; S.sel = null;
   ['crew','me','sel'].forEach(k => store.set(k, null));
   history.replaceState(null, '', location.pathname);
   closeSheet(); render();
@@ -135,18 +266,20 @@ function render(){
   const t = today();
   if (S.date > t) S.date = t;
   const gear = $('#gear');
-  const clear = () => { gear.hidden = true; $('#crew').innerHTML = ''; $('#whoami').innerHTML = ''; };
+  const clear = () => { gear.hidden = true; $('#crew').innerHTML = ''; $('#whoami').innerHTML = ''; $('#squad').innerHTML = ''; };
 
   if (S.failed){ clear(); renderFailure(); return; }
   if (!S.fb) return;
   if (!S.crew){ clear(); renderWelcome(); return; }
-  if (!S.ready.people || !S.ready.goals || !S.ready.checks) return;
+  if (!S.ready.people || !S.ready.goals || !S.ready.checks || !S.ready.squad) return;
   if (!S.people.length){ clear(); renderSetup(); return; }
   gear.hidden = false;
   if (!person(S.sel)) S.sel = (person(S.me) ? S.me : S.people[0].id);
 
   $('#whoami').innerHTML = person(S.me) ? '' : `<div class="whoami"><p>Which one are you? This phone will check off your goals.</p><div class="actions">${
     S.people.map(p => `<button class="btn" style="--p:${p.color}" data-action="set-me" data-id="${p.id}">${esc(p.name)}</button>`).join('')}</div></div>`;
+
+  renderSquad();
 
   const crew = $('#crew');
   crew.style.setProperty('--n', S.people.length);
@@ -164,6 +297,7 @@ function render(){
 
   renderPerson();
   if (S.sheet === 'goals') renderGoalList();
+  if (S.sheet === 'squad') renderTrophies();
 }
 
 const initial = n => (String(n).trim()[0] || '?').toUpperCase();
@@ -289,6 +423,20 @@ function openSheet(kind){
       <div id="sheet-list"></div>
     </div>`;
     syncForm(); renderGoalList();
+  } else if (kind === 'squad'){
+    S.prizeTarget = S.squad?.target || 30;
+    sh.style.setProperty('--p', person(S.me)?.color || COLORS[0]);
+    sh.innerHTML = `<div class="sheet-in">
+      <div class="sheet-h"><h2>Squad prize</h2><button class="btn ghost" data-action="close-sheet">Close</button></div>
+      <p class="empty" style="padding:0">A day counts when all of you finish your daily goals. Going over an “at most” limit, or ending a week short of an “at least” target, resets the streak to zero.</p>
+      <div class="field"><label for="prize-text">Prize</label><input type="text" id="prize-text" maxlength="60" placeholder="e.g. Steak dinner, loser buys" value="${esc(S.squad?.prize || '')}"></div>
+      <div class="field"><span class="lbl">Days in a row to win</span>
+        <div class="sugs">${[7,14,21,30,60,100].map(n => `<button class="sug" data-action="prize-days" data-n="${n}">${n} days</button>`).join('')}</div>
+        <div class="stepper"><button class="navbtn" data-action="prize-step" data-d="-1" aria-label="Fewer days">−</button><output id="prize-target"></output><button class="navbtn" data-action="prize-step" data-d="1" aria-label="More days">+</button><span>days</span></div></div>
+      <div class="actions"><button class="btn" data-action="save-squad">Save prize</button></div>
+      <div id="trophies"></div>
+    </div>`;
+    syncPrizeTarget(); renderTrophies();
   } else {
     sh.style.setProperty('--p', person(S.me)?.color || COLORS[0]);
     sh.innerHTML = `<div class="sheet-in">
@@ -417,6 +565,11 @@ document.addEventListener('click', e => {
   else if (a === 'crew-color'){ b.parentElement.querySelectorAll('.sw').forEach(x => x.setAttribute('aria-pressed', x===b)); }
   else if (a === 'crew-save') crewSave(b);
   else if (a === 'copy-link') copyLink();
+  else if (a === 'open-squad') openSheet('squad');
+  else if (a === 'prize-days'){ S.prizeTarget = +b.dataset.n; syncPrizeTarget(); }
+  else if (a === 'prize-step'){ S.prizeTarget = Math.min(365, Math.max(2, S.prizeTarget + +b.dataset.d)); syncPrizeTarget(); }
+  else if (a === 'save-squad') saveSquad(b);
+  else if (a === 'claim') claimPrize(b);
   else if (a === 'join') join();
   else if (a === 'create') enterCrew(newCode(), {creating:true});
   else if (a === 'create-here'){ S.creating = true; render(); }

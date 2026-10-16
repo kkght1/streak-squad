@@ -152,3 +152,23 @@ input[type=text],input[type=number]{font:inherit;font-size:16px;color:var(--ink)
 .panel ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:var(--muted)}
 .foot{text-align:center;font-size:12px;color:var(--muted)}
 .foot button{font-size:12px}
+
+/* squad streak */
+.squad{background:var(--surface);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 0 var(--line);position:relative;overflow:hidden}
+.squad::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--grad)}
+.squad .sq-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.squad .sq-main{display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums}
+.squad .sq-main .flame{width:24px;height:24px;fill:#F08A3C}
+.squad .sq-main .flame.off{fill:var(--line)}
+.squad .sq-main b{font-family:var(--display);font-size:40px;font-weight:800;line-height:1}
+.squad .sq-main span{color:var(--muted);font-weight:600}
+.squad .sq-prize{font-size:15px}
+.sq-bar{height:10px;border-radius:99px;background:var(--soft);overflow:hidden}
+.sq-bar i{display:block;height:100%;border-radius:99px;background:var(--grad);transition:width .4s ease}
+.squad .sq-status{margin:0;font-size:13.5px;color:var(--muted)}
+.squad .sq-reset{margin:0;font-size:12.5px;color:var(--bad)}
+.sq-btn{background:var(--grad);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)}
+.squad.won{background:color-mix(in srgb,#FFC56E 18%,var(--surface))}
+.squad.won .sq-status{color:var(--ink);font-weight:700}
+.sug[aria-pressed="true"]{border-style:solid;border-color:var(--ink);color:var(--ink)}
+.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
